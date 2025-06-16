@@ -2,6 +2,8 @@
 
 🌐 **[Live Demo](https://rikupi.github.io/akai-midimix-checker/)**
 
+![Preview](preview.gif)
+
 ## 日本語
 
 AKAI MIDI MIXコントローラーの動作確認・テスト用のWebツールです。
