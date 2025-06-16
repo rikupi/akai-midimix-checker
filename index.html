@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AKAI MIDI MIX Checker</title>
+    <style>
+        body {
+            background: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            margin: 10px;
+        }
+
+        .container {
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+        }
+
+        .device-selector {
+            text-align: center;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .control-buttons {
+            text-align: center;
+        }
+
+        select, button {
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            padding: 5px 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #444;
+        }
+
+        button:active {
+            background: #555;
+        }
+
+        .status {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #333;
+        }
+
+        .main-controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .channels {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .channel {
+            border: 1px solid #333;
+            padding: 10px;
+            width: 100px;
+        }
+
+        .channel h3 {
+            text-align: center;
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+
+        .knob {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #666;
+            border-radius: 50%;
+            margin: 5px auto;
+        }
+
+        .knob.active {
+            border-color: #0f0;
+        }
+
+        .knob-value {
+            text-align: center;
+            font-size: 10px;
+            color: #666;
+        }
+
+        .buttons {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 10px 0;
+            gap: 5px;
+        }
+
+        .button {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #666;
+            background: #222;
+        }
+
+        .button.active {
+            background: #0f0;
+        }
+
+        .button-label {
+            font-size: 8px;
+            text-align: center;
+            margin-top: 2px;
+        }
+
+        .fader {
+            width: 30px;
+            height: 100px;
+            border: 1px solid #666;
+            margin: 10px auto;
+            position: relative;
+            background: #111;
+        }
+
+        .fader-handle {
+            width: 100%;
+            height: 10px;
+            background: #666;
+            position: absolute;
+            bottom: 0;
+        }
+
+        .fader-handle.active {
+            background: #0f0;
+        }
+
+        .master-section {
+            border: 1px solid #666;
+            padding: 20px;
+            width: 200px;
+        }
+
+        .master-section h3 {
+            text-align: center;
+            margin: 0 0 10px 0;
+        }
+
+        .master-buttons {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+        }
+
+        .log {
+            background: #111;
+            border: 1px solid #333;
+            padding: 10px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+
+        .log-entry {
+            margin: 2px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AKAI MIDI MIX Checker</h1>
+        
+        <div class="controls">
+            <div class="device-selector">
+                <select id="midiInput">
+                    <option value="">Select MIDI Input...</option>
+                </select>
+                <select id="midiOutput">
+                    <option value="">Select MIDI Output...</option>
+                </select>
+            </div>
+            <div class="control-buttons">
+                <button id="toggleAllBtn">All LEDs ON/OFF</button>
+            </div>
+        </div>
+        
+        <div id="status" class="status">
+            No MIDI device connected
+        </div>
+
+        <div class="main-controls">
+            <div class="channels" id="channels"></div>
+            <div class="master-section">
+                <h3>MASTER</h3>
+                <div class="fader">
+                    <div class="fader-handle" id="master-fader"></div>
+                </div>
+                <div class="knob-value" id="master-value">0</div>
+                
+                <div class="master-buttons">
+                    <div>
+                        <div class="button" id="btn-bank-left"></div>
+                        <div class="button-label">BANK<br>LEFT</div>
+                    </div>
+                    <div>
+                        <div class="button" id="btn-bank-right"></div>
+                        <div class="button-label">BANK<br>RIGHT</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="log" id="log">
+            MIDI Log:
+        </div>
+    </div>
+
+    <script>
+        let midiAccess = null;
+        let selectedInput = null;
+        let selectedOutput = null;
+        let buttonStates = {};
+
+        // Hardcoded mappings from JSON
+        const mappings = {
+            "knob1-1": { "type": "cc", "cc": 16 },
+            "knob2-1": { "type": "cc", "cc": 17 },
+            "knob3-1": { "type": "cc", "cc": 18 },
+            "fader-1": { "type": "cc", "cc": 19 },
+            "btn-mute-1": { "type": "note", "note": 1 },
+            "btn-rec-1": { "type": "note", "note": 3 },
+            "knob1-2": { "type": "cc", "cc": 20 },
+            "knob2-2": { "type": "cc", "cc": 21 },
+            "knob3-2": { "type": "cc", "cc": 22 },
+            "fader-2": { "type": "cc", "cc": 23 },
+            "btn-mute-2": { "type": "note", "note": 4 },
+            "btn-rec-2": { "type": "note", "note": 6 },
+            "knob1-3": { "type": "cc", "cc": 24 },
+            "knob2-3": { "type": "cc", "cc": 25 },
+            "knob3-3": { "type": "cc", "cc": 26 },
+            "fader-3": { "type": "cc", "cc": 27 },
+            "btn-mute-3": { "type": "note", "note": 7 },
+            "btn-rec-3": { "type": "note", "note": 9 },
+            "knob1-4": { "type": "cc", "cc": 28 },
+            "knob2-4": { "type": "cc", "cc": 29 },
+            "knob3-4": { "type": "cc", "cc": 30 },
+            "fader-4": { "type": "cc", "cc": 31 },
+            "btn-mute-4": { "type": "note", "note": 10 },
+            "btn-rec-4": { "type": "note", "note": 12 },
+            "knob1-5": { "type": "cc", "cc": 46 },
+            "knob2-5": { "type": "cc", "cc": 47 },
+            "knob3-5": { "type": "cc", "cc": 48 },
+            "fader-5": { "type": "cc", "cc": 49 },
+            "btn-mute-5": { "type": "note", "note": 13 },
+            "btn-rec-5": { "type": "note", "note": 15 },
+            "knob1-6": { "type": "cc", "cc": 50 },
+            "knob2-6": { "type": "cc", "cc": 51 },
+            "knob3-6": { "type": "cc", "cc": 52 },
+            "fader-6": { "type": "cc", "cc": 53 },
+            "btn-mute-6": { "type": "note", "note": 16 },
+            "btn-rec-6": { "type": "note", "note": 18 },
+            "knob1-7": { "type": "cc", "cc": 54 },
+            "knob2-7": { "type": "cc", "cc": 55 },
+            "knob3-7": { "type": "cc", "cc": 56 },
+            "fader-7": { "type": "cc", "cc": 57 },
+            "btn-mute-7": { "type": "note", "note": 19 },
+            "btn-rec-7": { "type": "note", "note": 21 },
+            "knob1-8": { "type": "cc", "cc": 58 },
+            "knob2-8": { "type": "cc", "cc": 59 },
+            "knob3-8": { "type": "cc", "cc": 60 },
+            "fader-8": { "type": "cc", "cc": 61 },
+            "btn-mute-8": { "type": "note", "note": 22 },
+            "btn-rec-8": { "type": "note", "note": 24 },
+            "master-fader": { "type": "cc", "cc": 62 },
+            "btn-bank-left": { "type": "note", "note": 25 },
+            "btn-bank-right": { "type": "note", "note": 26 }
+        };
+
+        // Initialize channels
+        function initChannels() {
+            const channelsDiv = document.getElementById('channels');
+            
+            for (let i = 1; i <= 8; i++) {
+                const ch = document.createElement('div');
+                ch.className = 'channel';
+                ch.innerHTML = `
+                    <h3>CH${i}</h3>
+                    <div class="knob" id="knob1-${i}"></div>
+                    <div class="knob-value" id="knob1-${i}-value">0</div>
+                    <div class="knob" id="knob2-${i}"></div>
+                    <div class="knob-value" id="knob2-${i}-value">0</div>
+                    <div class="knob" id="knob3-${i}"></div>
+                    <div class="knob-value" id="knob3-${i}-value">0</div>
+                    <div class="buttons">
+                        <div>
+                            <div class="button" id="btn-mute-${i}"></div>
+                            <div class="button-label">MUTE</div>
+                        </div>
+                        <div>
+                            <div class="button" id="btn-rec-${i}"></div>
+                            <div class="button-label">REC</div>
+                        </div>
+                    </div>
+                    <div class="fader">
+                        <div class="fader-handle" id="fader-${i}"></div>
+                    </div>
+                    <div class="knob-value" id="fader-${i}-value">0</div>
+                `;
+                channelsDiv.appendChild(ch);
+            }
+        }
+
+        // Initialize MIDI
+        async function initMIDI() {
+            try {
+                midiAccess = await navigator.requestMIDIAccess();
+                updateDeviceList();
+                
+                midiAccess.onstatechange = () => {
+                    updateDeviceList();
+                };
+            } catch (err) {
+                document.getElementById('status').textContent = 'MIDI Error: ' + err.message;
+            }
+        }
+
+        // Update device list
+        function updateDeviceList() {
+            const inputSelect = document.getElementById('midiInput');
+            inputSelect.innerHTML = '<option value="">Select MIDI Input...</option>';
+            
+            const outputSelect = document.getElementById('midiOutput');
+            outputSelect.innerHTML = '<option value="">Select MIDI Output...</option>';
+            
+            for (let input of midiAccess.inputs.values()) {
+                const option = document.createElement('option');
+                option.value = input.id;
+                option.textContent = input.name;
+                inputSelect.appendChild(option);
+            }
+            
+            for (let output of midiAccess.outputs.values()) {
+                const option = document.createElement('option');
+                option.value = output.id;
+                option.textContent = output.name;
+                outputSelect.appendChild(option);
+            }
+        }
+
+        // Select device
+        document.getElementById('midiInput').addEventListener('change', (e) => {
+            if (selectedInput) {
+                selectedInput.onmidimessage = null;
+            }
+            
+            if (e.target.value) {
+                selectedInput = midiAccess.inputs.get(e.target.value);
+                selectedInput.onmidimessage = handleMIDIMessage;
+                updateStatus();
+            } else {
+                updateStatus();
+            }
+        });
+
+        document.getElementById('midiOutput').addEventListener('change', (e) => {
+            if (e.target.value) {
+                selectedOutput = midiAccess.outputs.get(e.target.value);
+            } else {
+                selectedOutput = null;
+            }
+            updateStatus();
+        });
+
+        function updateStatus() {
+            const status = document.getElementById('status');
+            if (selectedInput && selectedOutput) {
+                status.textContent = `Connected: ${selectedInput.name} → ${selectedOutput.name}`;
+            } else if (selectedInput) {
+                status.textContent = `Input only: ${selectedInput.name}`;
+            } else {
+                status.textContent = 'No MIDI device connected';
+            }
+        }
+
+        // Handle MIDI messages
+        function handleMIDIMessage(message) {
+            const [status, data1, data2] = message.data;
+            
+            // Add to log
+            addLog(`${status.toString(16).padStart(2, '0')} ${data1.toString().padStart(3, ' ')} ${data2.toString().padStart(3, ' ')}`);
+            
+            // Process based on mappings
+            processMapping(status, data1, data2);
+        }
+
+        // Process mapping
+        function processMapping(status, data1, data2) {
+            const messageType = (status & 0xF0);
+            
+            Object.entries(mappings).forEach(([controlId, mapping]) => {
+                if (mapping.type === 'cc' && messageType === 0xB0 && mapping.cc === data1) {
+                    updateControl(controlId, data2);
+                } else if (mapping.type === 'note' && mapping.note === data1) {
+                    const isOn = messageType === 0x90 && data2 > 0;
+                    updateControl(controlId, isOn ? 127 : 0);
+                }
+            });
+        }
+
+        // Update control
+        function updateControl(controlId, value) {
+            const element = document.getElementById(controlId);
+            if (!element) return;
+            
+            if (controlId.includes('knob')) {
+                element.classList.toggle('active', value > 0);
+                document.getElementById(controlId + '-value').textContent = value;
+            } else if (controlId.includes('fader')) {
+                const percentage = (value / 127) * 100;
+                element.style.bottom = percentage + '%';
+                element.classList.toggle('active', value > 0);
+                document.getElementById(controlId.replace('-fader', '') + '-value').textContent = value;
+            } else if (controlId.includes('btn')) {
+                // Toggle button state for buttons
+                const mapping = mappings[controlId];
+                if (mapping && mapping.type === 'note' && value > 0) {
+                    // Toggle state on press only (not release)
+                    buttonStates[controlId] = !buttonStates[controlId];
+                    element.classList.toggle('active', buttonStates[controlId]);
+                    
+                    // Send MIDI to control LED
+                    if (selectedOutput) {
+                        const velocity = buttonStates[controlId] ? 127 : 0;
+                        selectedOutput.send([0x90, mapping.note, velocity]);
+                    }
+                }
+            }
+        }
+
+        // Add log entry
+        function addLog(text) {
+            const log = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.textContent = new Date().toLocaleTimeString() + ' - ' + text;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+            
+            // Keep only last 100 entries
+            while (log.children.length > 101) {
+                log.removeChild(log.children[1]);
+            }
+        }
+
+        // Toggle all LEDs
+        let allLedsOn = false;
+        document.getElementById('toggleAllBtn').addEventListener('click', () => {
+            allLedsOn = !allLedsOn;
+            
+            // List of all button control IDs
+            const buttonControls = [
+                'btn-mute-1', 'btn-mute-2', 'btn-mute-3', 'btn-mute-4',
+                'btn-mute-5', 'btn-mute-6', 'btn-mute-7', 'btn-mute-8',
+                'btn-rec-1', 'btn-rec-2', 'btn-rec-3', 'btn-rec-4',
+                'btn-rec-5', 'btn-rec-6', 'btn-rec-7', 'btn-rec-8',
+                'btn-bank-left', 'btn-bank-right'
+            ];
+            
+            buttonControls.forEach(controlId => {
+                buttonStates[controlId] = allLedsOn;
+                const element = document.getElementById(controlId);
+                if (element) {
+                    element.classList.toggle('active', allLedsOn);
+                }
+                
+                // Send MIDI to control LED
+                if (selectedOutput) {
+                    const mapping = mappings[controlId];
+                    if (mapping && mapping.type === 'note') {
+                        const velocity = allLedsOn ? 127 : 0;
+                        selectedOutput.send([0x90, mapping.note, velocity]);
+                    }
+                }
+            });
+            
+            document.getElementById('toggleAllBtn').textContent = allLedsOn ? 'All LEDs OFF' : 'All LEDs ON';
+        });
+
+        // Initialize
+        initChannels();
+        initMIDI();
+    </script>
+</body>
+</html>
